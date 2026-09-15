@@ -60,16 +60,57 @@ class GroqProvider:
             raise RuntimeError(str(last_error) if last_error else "LLM request failed")
 
     async def structured(self, messages: list[dict], schema: Type[BaseModel], temperature: float = 0.2) -> BaseModel:
+        """Request structured JSON and safely extract it.
+
+        The LLM may prepend or append harmless text. We first try to parse the
+        raw response directly with ``json.loads``. If that fails, we fall back to
+        ``json.JSONDecoder().raw_decode`` which scans for the first JSON object
+        in the string, correctly handling nested structures and escaped braces
+        inside string literals.
+        """
         schema_hint = json.dumps(schema.model_json_schema())
         prompted = messages + [
             {"role": "system", "content": f"Respond with JSON matching this schema: {schema_hint}"}
         ]
+        # First attempt with normal temperature
         raw = await self.complete(prompted, json_schema=schema, temperature=temperature)
+        json_text = self._extract_json(raw)
         try:
-            return schema.model_validate_json(raw)
-        except Exception:
+            return schema.model_validate_json(json_text)
+        except Exception as exc:
+            # Fallback: retry with temperature=0 (more deterministic)
             raw2 = await self.complete(prompted, json_schema=schema, temperature=0)
-            return schema.model_validate_json(raw2)
+            json_text2 = self._extract_json(raw2)
+            return schema.model_validate_json(json_text2)
+
+    @staticmethod
+    def _extract_json(text: str) -> str:
+        """Extract the first JSON object from *text*.
+
+        1. Try ``json.loads`` on the whole string.
+        2. If that fails, use ``json.JSONDecoder().raw_decode`` to locate the
+           first JSON object, respecting nesting and escaped characters.
+        3. Raise a clear error with a short preview when no JSON is found.
+        """
+        # Quick path – pure JSON
+        try:
+            json.loads(text)
+            return text
+        except Exception:
+            pass
+        decoder = json.JSONDecoder()
+        idx = 0
+        length = len(text)
+        while idx < length:
+            try:
+                obj, end = decoder.raw_decode(text, idx)
+                # Successfully decoded a JSON value – return the slice
+                return text[idx:end]
+            except json.JSONDecodeError as e:
+                # Move forward one character and try again
+                idx = e.pos + 1
+        preview = (text[:75] + "...") if len(text) > 75 else text
+        raise RuntimeError(f"No JSON object could be extracted from LLM response: {preview!r}")
 
 
 class HeuristicProvider:
