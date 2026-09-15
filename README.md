@@ -113,10 +113,11 @@ TransformAI aims to make knowledge transformation fast, consistent, and scalable
 Instead of creating content one format at a time:
 
 Create once. Transform everywhere. ⚡
+```
 
 <div align="center">
 Built with ❤️ for SIH 2026
 
 ⭐ Star the repository if you like the idea!
 
-</div> ```
+</div> 
