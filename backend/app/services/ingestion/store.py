@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 from uuid import uuid4
 
 from app.core.config import get_settings
@@ -37,6 +38,63 @@ def save_upload(filename: str, data: bytes, content_type: str) -> Source:
     return source
 
 
+def _chunk_text_cleanly(text: str, max_chunk_size: int = CHUNK_SIZE) -> list[tuple[int, int, str]]:
+    """Chunk text cleanly respecting paragraph and sentence boundaries without truncating words."""
+    cleaned = text.strip()
+    if not cleaned:
+        return []
+
+    if len(cleaned) <= max_chunk_size:
+        return [(0, len(cleaned), cleaned)]
+
+    # Split on double newline (paragraphs) first
+    paragraphs = re.split(r"(\n\s*\n+)", cleaned)
+    chunks: list[tuple[int, int, str]] = []
+    current_chunk = ""
+    current_start = 0
+    running_offset = 0
+
+    for piece in paragraphs:
+        if not piece:
+            continue
+        if len(current_chunk) + len(piece) <= max_chunk_size:
+            if not current_chunk:
+                current_start = running_offset
+            current_chunk += piece
+        else:
+            if current_chunk.strip():
+                chunks.append((current_start, current_start + len(current_chunk), current_chunk.strip()))
+            if len(piece) > max_chunk_size:
+                # Split large paragraphs by sentence boundaries
+                sentences = re.split(r"(?<=[.!?])\s+", piece)
+                sub_chunk = ""
+                sub_start = running_offset
+                for s in sentences:
+                    if len(sub_chunk) + len(s) + 1 <= max_chunk_size:
+                        if not sub_chunk:
+                            sub_start = running_offset
+                        sub_chunk = (sub_chunk + " " + s).strip()
+                    else:
+                        if sub_chunk.strip():
+                            chunks.append((sub_start, sub_start + len(sub_chunk), sub_chunk.strip()))
+                        sub_chunk = s.strip()
+                        sub_start = running_offset
+                if sub_chunk.strip():
+                    current_chunk = sub_chunk
+                    current_start = sub_start
+                else:
+                    current_chunk = ""
+            else:
+                current_chunk = piece
+                current_start = running_offset
+        running_offset += len(piece)
+
+    if current_chunk.strip():
+        chunks.append((current_start, current_start + len(current_chunk), current_chunk.strip()))
+
+    return chunks
+
+
 def persist_chunks(source: Source, parse: ParseResult) -> list[SourceChunk]:
     chunks: list[SourceChunk] = []
     idx = 1
@@ -44,10 +102,11 @@ def persist_chunks(source: Source, parse: ParseResult) -> list[SourceChunk]:
     for page in parse.pages:
         text = page.text.strip()
         total_chars += len(text)
-        start = 0
-        while start < len(text):
-            end = min(len(text), start + CHUNK_SIZE)
-            piece = text[start:end]
+        pieces = _chunk_text_cleanly(text, CHUNK_SIZE)
+        for start, end, chunk_text in pieces:
+            # Discard any incomplete trailing fragments or empty chunks
+            if not chunk_text.strip():
+                continue
             chunks.append(
                 SourceChunk(
                     source_id=source.id,
@@ -56,13 +115,10 @@ def persist_chunks(source: Source, parse: ParseResult) -> list[SourceChunk]:
                     section=page.section,
                     start_char=start,
                     end_char=end,
-                    text=piece,
+                    text=chunk_text,
                 )
             )
             idx += 1
-            if end >= len(text):
-                break
-            start = max(end - CHUNK_OVERLAP, start + 1)
     source.page_count = parse.page_count
     source.char_count = total_chars
     source.extract_preview = (parse.pages[0].text[:800] if parse.pages else "")[:800]

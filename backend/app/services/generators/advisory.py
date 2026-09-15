@@ -5,26 +5,33 @@ from app.services.generators.base import BaseGenerator
 class AdvisoryGenerator(BaseGenerator):
     output_type = "advisory"
     schema = Advisory
-    # Guidelines for the LLM – keep sections distinct and omit empty ones.
     output_guidelines = [
-        "Separate situation, findings, and recommendations; do not repeat sentences.",
-        "If a section has no content, omit its heading.",
-        "Write concisely for security decision‑makers; avoid filler.",
+        "Use operational structure: Situation, Assessment, Impact, Current Status, Recommended Actions, Monitoring / Next Steps.",
+        "Separate situation, assessment, and recommendations cleanly without duplication.",
+        "Only include sections supported by the source.",
+        "Never include citation metadata like [c1...].",
     ]
 
     def to_markdown(self, payload: Advisory) -> str:
-        recs = "\n".join(f"1. {x}" for x in payload.recommendations)
-        watch = "\n".join(f"- {x}" for x in payload.watch_items)
-        caveats = "\n".join(f"- {x}" for x in payload.caveats)
         parts = [f"# {payload.header}\n\n"]
         if payload.situation:
             parts.append(f"## Situation\n{payload.situation}\n\n")
         if payload.assessment:
-            parts.append(f"## Operational Assessment\n{payload.assessment}\n\n")
-        if recs:
+            parts.append(f"## Assessment\n{payload.assessment}\n\n")
+        if payload.impact:
+            impact_lines = "\n".join(f"- {x}" for x in payload.impact)
+            parts.append(f"## Impact\n{impact_lines}\n\n")
+        if payload.current_status:
+            status_lines = "\n".join(f"- {x}" for x in payload.current_status)
+            parts.append(f"## Current Status\n{status_lines}\n\n")
+        if payload.recommendations:
+            recs = "\n".join(f"1. {x}" for x in payload.recommendations)
             parts.append(f"## Recommended Actions\n{recs}\n\n")
-        if watch:
-            parts.append(f"## Watch Items & Monitoring\n{watch}\n\n")
-        if caveats:
-            parts.append(f"## Caveats & Operational Constraints\n{caveats}\n")
-        return "".join(parts)
+        monitoring = payload.monitoring_next_steps or payload.watch_items
+        if monitoring:
+            mon_lines = "\n".join(f"- {x}" for x in monitoring)
+            parts.append(f"## Monitoring / Next Steps\n{mon_lines}\n\n")
+        if payload.caveats:
+            cav_lines = "\n".join(f"- {x}" for x in payload.caveats)
+            parts.append(f"## Operational Caveats\n{cav_lines}\n")
+        return "".join(parts).strip() + "\n"

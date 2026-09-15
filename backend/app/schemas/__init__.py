@@ -1,6 +1,6 @@
 from typing import Any, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 Tone = Literal["formal", "neutral", "urgent", "advisory", "public"]
 DetailLevel = Literal["brief", "standard", "deep"]
@@ -69,7 +69,9 @@ class Claim(BaseModel):
 class CanonicalKnowledge(BaseModel):
     title: str = "Untitled source"
     source_type: str = "pdf"
+    summary: str = ""
     executive_brief: str = ""
+    findings: list[str] = Field(default_factory=list)
     key_points: list[str] = Field(default_factory=list)
     entities: list[Entity] = Field(default_factory=list)
     people: list[str] = Field(default_factory=list)
@@ -79,13 +81,35 @@ class CanonicalKnowledge(BaseModel):
     events: list[str] = Field(default_factory=list)
     dates: list[str] = Field(default_factory=list)
     statistics: list[str] = Field(default_factory=list)
+    current_status: list[str] = Field(default_factory=list)
+    impact: list[str] = Field(default_factory=list)
     threats: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
+    unknowns: list[str] = Field(default_factory=list)
     claims: list[Claim] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
     source_references: list[SourceSpan] = Field(default_factory=list)
-    unknowns: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def sync_canonical_fields(self):
+        if not self.summary and self.executive_brief:
+            self.summary = self.executive_brief
+        elif not self.executive_brief and self.summary:
+            self.executive_brief = self.summary
+
+        if not self.findings and self.key_points:
+            self.findings = list(self.key_points)
+        elif not self.key_points and self.findings:
+            self.key_points = list(self.findings)
+
+        if not self.open_questions and self.unknowns:
+            self.open_questions = list(self.unknowns)
+        elif not self.unknowns and self.open_questions:
+            self.unknowns = list(self.open_questions)
+
+        return self
 
 
 class LengthConstraints(BaseModel):
@@ -118,7 +142,10 @@ class Citation(BaseModel):
 class ExecutiveSummary(BaseModel):
     headline: str
     context: str
-    key_findings: list[str]
+    key_findings: list[str] = Field(default_factory=list)
+    impact: list[str] = Field(default_factory=list)
+    current_status: list[str] = Field(default_factory=list)
+    recommended_actions: list[str] = Field(default_factory=list)
     implications: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
     fact_keys_used: list[str] = Field(default_factory=list)
@@ -126,10 +153,13 @@ class ExecutiveSummary(BaseModel):
 
 
 class Advisory(BaseModel):
-    header: str = "UNCLASSIFIED — DEMO"
+    header: str = "SECURITY ADVISORY"
     situation: str
     assessment: str
-    recommendations: list[str]
+    impact: list[str] = Field(default_factory=list)
+    current_status: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+    monitoring_next_steps: list[str] = Field(default_factory=list)
     watch_items: list[str] = Field(default_factory=list)
     caveats: list[str] = Field(default_factory=list)
     fact_keys_used: list[str] = Field(default_factory=list)
@@ -152,7 +182,7 @@ class Bullet(BaseModel):
 class Slide(BaseModel):
     layout: Literal["title", "section", "title_bullets", "two_column", "closing"] = "title_bullets"
     title: str
-    bullets: list[Bullet] = Field(default_factory=list)
+    bullets: list[Any] = Field(default_factory=list)
     right_column_bullets: list[Bullet] = Field(default_factory=list)
     speaker_notes: str = ""
     fact_keys: list[str] = Field(default_factory=list)
@@ -184,18 +214,45 @@ class InfographicSection(BaseModel):
 
 class InfographicSpec(BaseModel):
     title: str
-    sections: list[InfographicSection]
+    headline: str = ""
+    key_statistics: list[str] = Field(default_factory=list)
+    timeline: list[str] = Field(default_factory=list)
+    current_status: list[str] = Field(default_factory=list)
+    response_actions: list[str] = Field(default_factory=list)
+    key_takeaway: str = ""
+    suggested_visual_elements: list[str] = Field(default_factory=list)
+    sections: list[InfographicSection] = Field(default_factory=list)
     callouts: list[str] = Field(default_factory=list)
     chart_suggestions: list[str] = Field(default_factory=list)
     fact_keys_used: list[str] = Field(default_factory=list)
 
 
 class VideoScene(BaseModel):
-    index: int
-    description: str
-    on_screen_text: str = ""
-    narration: str = ""
+    index: int = 1
+    scene_number: Optional[int] = None
+    title: str = ""
+    duration: str = "8 seconds"
     duration_seconds: int = 8
+    visual: str = ""
+    description: str = ""
+    narration: str = ""
+    on_screen_text: str = ""
+
+    @model_validator(mode="after")
+    def sync_scene_fields(self):
+        if self.scene_number is None:
+            self.scene_number = self.index
+        else:
+            self.index = self.scene_number
+
+        if not self.visual and self.description:
+            self.visual = self.description
+        elif not self.description and self.visual:
+            self.description = self.visual
+
+        if not self.title:
+            self.title = self.visual[:30] or f"Scene {self.index}"
+        return self
 
 
 class VideoPackage(BaseModel):

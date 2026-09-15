@@ -40,6 +40,9 @@ async def main():
                 "advisory",
                 "linkedin_post",
                 "x_thread",
+                "presentation",
+                "infographic",
+                "video_package",
             ],
             config={
                 "audience": "senior decision makers",
@@ -102,6 +105,20 @@ async def main():
             print(markdown[:500])
 
         print()
+        # Verify all expected outputs are present
+        expected_outputs = {"executive_summary","advisory","linkedin_post","x_thread","presentation","infographic","video_package"}
+        generated_outputs = {artifact.get('output_type') for artifact in result.get('generated', [])}
+        missing = expected_outputs - generated_outputs
+        assert not missing, f"Missing generated outputs: {missing}"
+
+        # Verify each output passed consistency, grounding, quality
+        validations = result.get('validations', [])
+        for out_type in expected_outputs:
+            checks = [v for v in validations if v.get('output_type') == out_type]
+            assert checks, f"No validations found for {out_type}"
+            for chk in checks:
+                assert chk.get('passed') is True, f"{out_type} {chk.get('check_type')} failed"
+
         print("VALIDATIONS:")
         print("-" * 60)
 
@@ -127,3 +144,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+def test_e2e():
+    asyncio.run(main())

@@ -5,14 +5,23 @@ from app.services.generators.base import BaseGenerator
 class LinkedInGenerator(BaseGenerator):
     output_type = "linkedin_post"
     schema = LinkedInPost
-    # Guidelines for natural LinkedIn post
     output_guidelines = [
-        "Write a concise, conversational LinkedIn post aimed at security professionals.",
-        "Start with a hook, include a brief story, explain why it matters, and end with a takeaway.",
-        "Do not use formal report headings like 'KEY INCIDENT FINDINGS'.",
-        "Keep the body between 150 and 1300 characters, but prioritize natural flow over exact length.",
+        "Generate a natural professional LinkedIn post for decision makers and cybersecurity peers.",
+        "Structure naturally: opening/context, important development, significance/lesson, concise conclusion, and hashtags.",
+        "Do NOT use mechanical labels such as 'Statistics:', 'Dates:', or 'Recommendations:'.",
+        "Do NOT dump raw extracted text fragments or bullet lists.",
+        "Do NOT include citation metadata like [c1...].",
+        "Only include claims supported by canonical knowledge.",
     ]
 
     def to_markdown(self, payload: LinkedInPost) -> str:
-        tags = " ".join(payload.hashtags)
-        return f"{payload.hook}\n\n{payload.body}\n\n{payload.cta}\n\n{tags}\n"
+        parts = []
+        if payload.hook:
+            parts.append(payload.hook)
+        if payload.body:
+            parts.append(payload.body)
+        if payload.cta:
+            parts.append(payload.cta)
+        if payload.hashtags:
+            parts.append(" ".join(payload.hashtags))
+        return "\n\n".join(parts).strip() + "\n"
