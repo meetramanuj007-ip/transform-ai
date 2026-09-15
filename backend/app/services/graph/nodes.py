@@ -3,6 +3,9 @@ from __future__ import annotations
 import importlib
 import json
 from typing import Any
+import asyncio
+import logging
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import select
 
@@ -321,10 +324,9 @@ async def analyze(state: dict) -> dict:
 
         provider = get_provider()
 
-        knowledge = await provider.structured(
-            messages,
-            CanonicalKnowledge,
-            temperature=0.1,
+        knowledge = await asyncio.wait_for(
+            provider.structured(messages, CanonicalKnowledge, temperature=0.1),
+            timeout=120,
         )
 
         knowledge.source_type = db.get(Source, source_id).source_type
