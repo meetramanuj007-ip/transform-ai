@@ -38,8 +38,10 @@ class GroqProvider:
             payload["response_format"] = {"type": "json_object"}
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
         async with _sem():
+            max_retries = 5
+            base_delay = 1.0  # seconds
             last_error = None
-            for _ in range(2):
+            for attempt in range(max_retries):
                 try:
                     async with httpx.AsyncClient(timeout=60.0) as client:
                         response = await client.post(
@@ -48,15 +50,25 @@ class GroqProvider:
                             json=payload,
                         )
                         if response.status_code == 429:
-                            last_error = RuntimeError("LLM rate limited")
-                            await asyncio.sleep(1.5)
+                            # Respect Retry-After header if present
+                            retry_after = response.headers.get("Retry-After")
+                            try:
+                                wait = float(retry_after) if retry_after is not None else None
+                            except (ValueError, TypeError):
+                                wait = None
+                            if wait is None:
+                                # exponential backoff with jitter cap
+                                wait = base_delay * (2 ** attempt)
+                            await asyncio.sleep(wait)
                             continue
                         response.raise_for_status()
                         data = response.json()
                         return data["choices"][0]["message"]["content"]
                 except httpx.HTTPError as exc:
+                    # Non‑rate‑limit errors – backoff then retry
                     last_error = exc
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(base_delay * (2 ** attempt))
+            # Exhausted retries
             raise RuntimeError(str(last_error) if last_error else "LLM request failed")
 
     async def structured(self, messages: list[dict], schema: Type[BaseModel], temperature: float = 0.2) -> BaseModel:

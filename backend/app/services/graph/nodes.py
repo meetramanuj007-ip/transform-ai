@@ -501,11 +501,20 @@ async def plan_outputs(state: dict) -> dict:
                 },
             ]
 
-            plan = await provider.structured(
-                messages,
-                TransformationPlan,
-                temperature=0.1,
-            )
+            try:
+                plan = await provider.structured(
+                    messages,
+                    TransformationPlan,
+                    temperature=0.1,
+                )
+            except Exception as exc:
+                # Log exception without extra LLM call
+                logger.error(
+                    "plan_outputs error for %s: %s",
+                    output_type,
+                    exc,
+                )
+                raise
 
             plan.output_type = output_type
             plan.communication_objective = config.get(
