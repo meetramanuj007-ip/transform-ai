@@ -145,6 +145,8 @@ export default function TransformAIDashboard() {
   useEffect(() => {
     if (!jobId) return;
 
+    let interval: ReturnType<typeof setInterval>;
+
     const fetchJobDetails = async () => {
       try {
         const res = await fetch(`${API_BASE}/api/jobs/${jobId}`);
@@ -155,6 +157,7 @@ export default function TransformAIDashboard() {
           setCurrentNode(data.current_node);
           if (data.status === "completed" || data.status === "failed") {
             setExecuting(false);
+            clearInterval(interval);
           }
         }
       } catch (err) {
@@ -163,7 +166,7 @@ export default function TransformAIDashboard() {
     };
 
     fetchJobDetails();
-    const interval = setInterval(fetchJobDetails, 1000);
+    interval = setInterval(fetchJobDetails, 1000);
     return () => clearInterval(interval);
   }, [jobId]);
 

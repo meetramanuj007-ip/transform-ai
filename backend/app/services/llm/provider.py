@@ -59,6 +59,8 @@ class GroqProvider:
                             if wait is None:
                                 # exponential backoff with jitter cap
                                 wait = base_delay * (2 ** attempt)
+                            import logging
+                            logging.getLogger(__name__).warning("Groq 429 rate limit hit. Waiting %s seconds (attempt %s)", wait, attempt)
                             await asyncio.sleep(wait)
                             continue
                         response.raise_for_status()

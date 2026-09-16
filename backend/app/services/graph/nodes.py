@@ -323,11 +323,26 @@ async def analyze(state: dict) -> dict:
         ]
 
         provider = get_provider()
+        import time
+        start_time = time.time()
+        logger.info("analyze started for job %s, model %s", job_id, getattr(provider, 'model', 'unknown'))
 
-        knowledge = await asyncio.wait_for(
-            provider.structured(messages, CanonicalKnowledge, temperature=0.1),
-            timeout=120,
-        )
+        try:
+            knowledge = await asyncio.wait_for(
+                provider.structured(messages, CanonicalKnowledge, temperature=0.1),
+                timeout=120,
+            )
+            elapsed = time.time() - start_time
+            logger.info("analyze completed for job %s in %.2fs", job_id, elapsed)
+        except Exception as exc:
+            elapsed = time.time() - start_time
+            logger.error("analyze failed for job %s after %.2fs. Exception: %r", job_id, elapsed, exc)
+            # Fallback to prevent pipeline failure on LLM timeout/rate limit
+            knowledge = CanonicalKnowledge(
+                title="Analysis Incomplete",
+                summary=f"Automated analysis failed: {exc}. The source may be too large or the LLM provider timed out.",
+                executive_brief="Analysis timed out.",
+            )
 
         knowledge.source_type = db.get(Source, source_id).source_type
 

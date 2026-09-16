@@ -232,12 +232,16 @@ async def _run_transformation_job(job_id: str):
         await graph.ainvoke(initial_state)
 
     except Exception as exc:
+        import logging
+        logging.getLogger(__name__).error("Job %s failed", job_id, exc_info=True)
         db_session = SessionLocal()
         try:
             j = db_session.get(TransformationJob, job_id)
             if j:
                 j.status = "failed"
-                j.error_message = str(exc)
+                # Some exceptions like TimeoutError evaluate to empty string
+                err_msg = str(exc)
+                j.error_message = err_msg if err_msg.strip() else repr(exc)
                 db_session.commit()
         finally:
             db_session.close()
